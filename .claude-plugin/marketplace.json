@@ -1,0 +1,15 @@
+{
+  "name": "claude-code-kamehameha",
+  "owner": { "name": "Aurumdev952", "url": "https://github.com/Aurumdev952" },
+  "metadata": { "description": "Kamehameha: your Claude Code context window as a pixel-art beam struggle" },
+  "plugins": [
+    {
+      "name": "kamehameha",
+      "source": "./",
+      "description": "A pixel-art hero tanks a kamehameha that grows with your context window. At 95%: GAME OVER, please compact.",
+      "homepage": "https://github.com/Aurumdev952/claude-code-kamehameha",
+      "repository": "https://github.com/Aurumdev952/claude-code-kamehameha",
+      "license": "MIT"
+    }
+  ]
+}

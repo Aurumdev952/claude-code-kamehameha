@@ -1,0 +1,10 @@
+{
+  "name": "kamehameha",
+  "version": "0.1.0",
+  "description": "Context usage as a pixel-art showdown: a hero laughs off a kamehameha that grows with the context window, strains harder and harder, and at 95% it's GAME OVER, please compact",
+  "author": { "name": "Aurumdev952", "url": "https://github.com/Aurumdev952" },
+  "homepage": "https://github.com/Aurumdev952/claude-code-kamehameha",
+  "repository": "https://github.com/Aurumdev952/claude-code-kamehameha",
+  "license": "MIT",
+  "keywords": ["claude-code-mod", "context-window", "pixel-art", "kamehameha", "fun"]
+}
