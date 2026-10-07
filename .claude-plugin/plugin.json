@@ -1,6 +1,6 @@
 {
   "name": "kamehameha",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Context usage as a pixel-art showdown: a hero laughs off a kamehameha that grows with the context window, strains harder and harder, and at 95% it's GAME OVER, please compact",
   "author": {
     "name": "Aurumdev952",

@@ -2,7 +2,7 @@ import type { EngineInterface, PluginOptions, Register, SessionContextUsage, Tim
 
 import { CAPTIONS, createWorld, DEATH, drain, setTarget, stageOf, update } from './engine/director'
 import type { Event, World } from './engine/director'
-import { encodeCells, encodeRgba, layout, paint } from './engine/render'
+import { encodeCells, encodeRgba, HUD_H, layout, paint } from './engine/render'
 
 const PANE = 'kamehameha'
 const TITLE = 'Kamehameha'
@@ -52,6 +52,9 @@ let last = 0
 let busy = false
 let timer: Timer | undefined
 let mounted: { renderer: Renderer; W: number; H: number } | undefined
+/** The world height the fight runs in: the pixel picture gives HUD_H rows to its gauge. */
+const sceneHeight = (site: { renderer: Renderer; H: number }) => (site.renderer === 'pixels' ? site.H - HUD_H : site.H)
+const hud = () => ({ percent: percent(), label: labelFor() })
 /** When the pane was last redrawn whole, so refusals and first mounts redraw once. */
 let settledAt = 0
 /**
@@ -64,9 +67,19 @@ let label = ''
 /** Real times of recent blits and how long each frame took to draw, for /kamehameha stats. */
 const frameTimes: number[] = []
 const drawTimes: number[] = []
+let refused = 0
+let lastRefusal = ''
 let shownStage = ''
 
 const renderer = (): Renderer => override ?? (settings.renderer === 'auto' ? detected : settings.renderer)
+
+/**
+ * Frames per second actually aimed for. A streamed image is replaced whole
+ * each frame, and kitty shows the gap between two as a blank flash past about
+ * 30 a second (measured: 60 fps blanked 13% of the time, 30 fps never).
+ */
+const PIXELS_MAX_FPS = 30
+const targetFps = () => (renderer() === 'pixels' ? Math.min(settings.fps, PIXELS_MAX_FPS) : settings.fps)
 
 /**
  * Pixels per world pixel in an Image: 3 for smooth glow, dropping to 2 when
@@ -77,7 +90,7 @@ let drawCost = 0
 
 const adapt = (ms: number) => {
   drawCost = drawCost === 0 ? ms : drawCost * 0.9 + ms * 0.1
-  if (pixelScale > 2 && drawCost > (1000 / settings.fps) * 0.6) {
+  if (pixelScale > 2 && drawCost > (1000 / targetFps()) * 0.6) {
     pixelScale = 2
     drawCost = 0
   }
@@ -132,17 +145,21 @@ function react($: EngineInterface, events: readonly Event[]) {
     if (event === 'over9000') $.ui.toast("📟 Power level: IT'S OVER 9000!")
   }
 
+  // The pixel picture carries its own gauge: redrawing its tree would place
+  // the image again, which kitty shows as a blank flash, so only the cell
+  // renderer's caption and gauge redraw.
+  const streaming = mounted?.renderer === 'pixels'
   const stage = world.phase === 'over' ? 'dead' : world.stage
   if (stage !== shownStage) {
     shownStage = stage
     const p = Math.round(percent())
     $.ui.status(stage === 'dead' ? '💀 GAME OVER · /compact' : stage === 'knee' || stage === 'strain' ? `⚡ context ${p}%` : undefined)
-    $.ui.invalidate('ui.render')
+    if (!streaming) $.ui.invalidate('ui.render')
   }
   const next = `${labelFor()}|${world.phase}`
   if (next !== label) {
     label = next
-    $.ui.invalidate('ui.render')
+    if (!streaming) $.ui.invalidate('ui.render')
   }
 }
 
@@ -156,7 +173,7 @@ async function tick($: EngineInterface) {
     if (demoAt !== undefined && (now - demoAt) / 1000 > DEMO.end) demoAt = undefined
 
     const W = mounted?.W ?? 72
-    const H = mounted?.H ?? 40
+    const H = mounted === undefined ? 40 : sceneHeight(mounted)
     setTarget(world, percent(), tokens)
     update(world, dt, layout(world, W, H))
     react($, drain(world))
@@ -164,7 +181,7 @@ async function tick($: EngineInterface) {
     if (mounted === undefined) return
     const site = mounted
     const t0 = Date.now()
-    const picture = paint(world, site.W, site.H, site.renderer === 'pixels' ? pixelScale : 1)
+    const picture = site.renderer === 'pixels' ? paint(world, site.W, site.H, pixelScale, hud()) : paint(world, site.W, site.H, 1)
     const sent =
       site.renderer === 'pixels'
         ? $.ui.blit({ requestId: PANE, key: pictureKey(), source: { rgba: encodeRgba(picture), width: picture.w, height: picture.h } })
@@ -175,6 +192,8 @@ async function tick($: EngineInterface) {
     // frame waits until this one has been taken.
     const done = await sent
     if ('deny' in done && done.deny !== undefined) {
+      refused += 1
+      lastRefusal = String(done.deny)
       if (mounted === site) mounted = undefined
       // A refused frame (a resize, an image the terminal dropped): redraw the
       // tree, at most once a second, and the stream picks up from there.
@@ -210,7 +229,7 @@ function start($: EngineInterface) {
     void tick($).finally(() => {
       if (id !== loopId) return
       // With nothing on screen the fight still runs, ten times a second.
-      const period = mounted === undefined ? 100 : 1000 / settings.fps
+      const period = mounted === undefined ? 100 : 1000 / targetFps()
       // The engine takes a few ms to deliver a timer; ask that much early.
       const wait = Math.max(1, Math.round(period - (Date.now() - began) - 3))
       timer = $.clock.after(wait, frame)
@@ -267,7 +286,11 @@ export const register: Register = (on, options) => {
       const fps = span > 0 ? (frameTimes.length - 1) / span : 0
       const avg = drawTimes.length > 0 ? drawTimes.reduce((a, b) => a + b, 0) / drawTimes.length : 0
       const size = mounted === undefined ? 'not shown' : `${mounted.W}x${mounted.H} world px${mounted.renderer === 'pixels' ? ` at ${pixelScale}x` : ''}`
-      return { text: `Kamehameha: ${fps.toFixed(1)} fps (target ${settings.fps}), ${avg.toFixed(1)} ms per frame, ${renderer()} renderer, ${size}, phase ${world.phase}` }
+      return { text: `Kamehameha: ${fps.toFixed(1)} fps (target ${targetFps()}), ${avg.toFixed(1)} ms per frame, ${renderer()} renderer, ${size}, phase ${world.phase}, ${refused} frames refused${lastRefusal === '' ? '' : ` (last: ${lastRefusal})`}` }
+    } else if (/^fps \d+$/.test(arg)) {
+      settings = { ...settings, fps: clamp(parseInt(arg.slice(4), 10), 10, 60) }
+      start($)
+      return { text: `Kamehameha now aims for ${targetFps()} fps this session.` }
     } else if (arg === 'cells' || arg === 'pixels') {
       override = arg
       $.ui.invalidate('ui.render')
@@ -276,7 +299,7 @@ export const register: Register = (on, options) => {
       demoAt = undefined
       pinned = clamp(parseInt(arg, 10), 0, 100)
     } else if (arg !== '') {
-      return { text: 'Usage: /kamehameha [demo | live | <percent> | cells | pixels | stats]' }
+      return { text: 'Usage: /kamehameha [demo | live | <percent> | cells | pixels | fps <n> | stats]' }
     }
 
     await open($)
@@ -332,15 +355,10 @@ export const register: Register = (on, options) => {
     }
     if (want === 'pixels' && 'Image' in table) {
       const { Image } = table
-      mounted = { renderer: 'pixels', W, H }
-      const picture = paint(world, W, H, pixelScale)
-      return (
-        <Box flexDirection="column">
-          <Image key={pictureKey()} source={{ rgba: encodeRgba(picture), width: picture.w, height: picture.h }} columns={columns} rows={rows} alt={caption.text} />
-          {line}
-          {gauge}
-        </Box>
-      )
+      const imageRows = rows + 2
+      mounted = { renderer: 'pixels', W, H: imageRows * 2 }
+      const picture = paint(world, W, imageRows * 2, pixelScale, hud())
+      return <Image key={pictureKey()} source={{ rgba: encodeRgba(picture), width: picture.w, height: picture.h }} columns={columns} rows={imageRows} alt={caption.text} />
     }
     if ('Raster' in table) {
       const { Raster } = table

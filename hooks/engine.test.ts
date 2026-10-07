@@ -149,3 +149,14 @@ describe('rendering', () => {
     expect(pairs.size).toBeLessThan(1024)
   })
 })
+
+describe('the pixel gauge', () => {
+  test('draws the label with a real percent sign, not a placeholder', () => {
+    const w = createWorld({ percent: 40, charge: false })
+    const withPercent = paint(w, W, H, 1, { percent: 40, label: '40%' })
+    const withQuestion = paint(w, W, H, 1, { percent: 40, label: '40?' })
+    let differs = 0
+    for (let i = 0; i < withPercent.px.length; i++) if (withPercent.px[i] !== withQuestion.px[i]) differs++
+    expect(differs).toBeGreaterThan(0)
+  })
+})
