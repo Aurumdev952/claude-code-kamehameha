@@ -71,7 +71,7 @@ Every new stage lands with hit-stop, a camera kick, a flash and a shout. Past 90
 
 | Terminal | Renderer | What you get |
 |---|---|---|
-| **kitty, Ghostty** | `pixels` (auto) | A real image at 3× resolution: smooth glow, fine sparks, fine ridgelines |
+| **kitty, Ghostty** | `pixels` (auto) | A real image at 2–3× resolution (smooth glow, fine sparks, fine ridgelines) with the gauge drawn into the picture |
 | **everything else** (WezTerm, iTerm2, Alacritty, Windows Terminal…) | `cells` (auto) | Two pixels per character cell with the `▀` block in true color |
 
 <table>
@@ -92,9 +92,10 @@ Every new stage lands with hit-stop, a camera kick, a flash and a shout. Past 90
 | `/kamehameha 80` | Preview any percentage |
 | `/kamehameha live` | Go back to your real context usage |
 | `/kamehameha pixels` / `cells` | Switch renderer for this session |
+| `/kamehameha fps 30` | Change the frame rate for this session |
 | `/kamehameha stats` | Live frame rate, draw time per frame, renderer and size |
 
-You also get a caption and a three-color gauge (`████████░░ 71%  142k / 200k`) under the art, a status line warning from 75%, and toasts when the hero falls, gets back up, or passes 9000.
+You also get a three-color gauge (`████████░░ 71%  142k / 200k`) with a caption under the art (in `pixels` mode the gauge is part of the picture), a status line warning from 75%, and toasts when the hero falls, gets back up, or passes 9000.
 
 ## ⚙️ Settings
 
@@ -103,19 +104,21 @@ Set these in `/plugin` (or under `pluginConfigs.kamehameha` in settings):
 | Setting | Default | |
 |---|---|---|
 | `renderer` | `auto` | `auto`, `cells` or `pixels` |
-| `fps` | `60` | 10 to 60. Lower it to save CPU: 30 looks smooth too. |
+| `fps` | `60` | 10 to 60. Lower it to save CPU: 30 looks smooth too. The `pixels` renderer is capped at 30 (see below). |
 | `sound` | `false` | Charge, beam, impact, explosion, heal and scouter sounds. **macOS only:** Claude Code has no audio player on Linux or Windows. |
 
 ## 📊 Performance
 
-Measured live in Claude Code 2.1.293 with a 79×31-cell pane, using `/kamehameha stats`:
+Measured live in Claude Code 2.1.293 with a 79×31-cell docked pane, using `/kamehameha stats`:
 
-| Terminal | Renderer | Calm (30%) | Peak (85%) | Draw time |
+| Terminal | Renderer | Calm (30%) | Peak (85–93%) | Draw time |
 |---|---|---|---|---|
-| WezTerm | cells | **60 fps** | ~52 fps | 1.6–3 ms |
-| kitty | pixels | ~59 fps | ~44 fps | 8–18 ms |
+| WezTerm | cells | **60 fps** | 50–57 fps | 1.3–3 ms |
+| kitty | pixels | **30 fps** | **30 fps** | 6–13 ms |
 
-At peak, the limit is how many terminal cells change per frame, not the drawing itself. The pixel renderer drops from 3× to 2× resolution automatically if it can't keep up. An animated pane costs real CPU, so set `fps` to 30 if your machine is busy. With the pane closed, the fight keeps running ten times a second, with no drawing.
+- **Why `cells` dips at peak:** the limit there is how many terminal cells change per frame, not the drawing itself.
+- **Why `pixels` is capped at 30:** each frame sends a whole new image, and above about 30 a second kitty shows the gap between two images as a blank flash. Screen samples measured 13% blank at 60 fps, 1–2% at 40, and **0%** at 30 or below. For the same reason, the pixel picture draws its own gauge, because redrawing the pane would also flash. If drawing runs long, the picture drops from 3× to 2× resolution automatically.
+- **CPU:** an animated pane costs real CPU, so set `fps` to 30 if your machine is busy. With the pane closed, the fight keeps running ten times a second, with no drawing.
 
 ## 🔬 How it works
 
@@ -149,7 +152,7 @@ session.measure ─► context % ─► director.update(dt)  springs, stages, ti
 ```bash
 git clone https://github.com/Aurumdev952/claude-code-kamehameha
 claude --plugin-dir ./claude-code-kamehameha        # run it from source
-claude plugin test ./claude-code-kamehameha         # 16 tests
+claude plugin test ./claude-code-kamehameha         # 17 tests
 bun tools/record.ts out --script demo && python3 tools/gif.py out gif demo.gif 4   # re-record the GIF
 python3 tools/sounds.py                             # re-synthesize the sounds
 ```

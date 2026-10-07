@@ -2,7 +2,7 @@ import { drawBeam, drawChargeBall, drawClash } from './beam'
 import { Canvas } from './canvas'
 import { CHARGE_TIME, DEATH, heroFace, OVER, phaseTime, poseBlend, power, RECOVER } from './director'
 import type { Layout, World } from './director'
-import { drawCentered, GLYPH_H, textWidth } from './font'
+import { drawCentered, drawText, GLYPH_H, textWidth } from './font'
 import { bayer, C, mix } from './palette'
 import { noise1 } from './rng'
 import { drawGround, drawMountains, drawSky, flashOver } from './scenery'
@@ -166,11 +166,45 @@ const drawTitles = (c: Canvas, w: World, s: number) => {
   }
 }
 
+/** The gauge drawn into the picture itself, for the pixel renderer. */
+export type Hud = { percent: number; label: string }
+
+/** World pixels the in-picture gauge takes at the bottom. */
+export const HUD_H = 9
+
+const drawHud = (c: Canvas, hud: Hud, top: number, s: number) => {
+  c.rect(0, top, c.w, c.h - top, 0x10131f)
+  const label = hud.label.toUpperCase()
+  // The label at finer pixels than the scene, so the bar keeps the room.
+  const ls = Math.max(1, s - 1)
+  const labelW = textWidth(label, ls)
+  const x0 = 3 * s
+  const x1 = Math.max(x0 + 8 * s, c.w - labelW - 6 * s)
+  const y = top + 3 * s
+  const full = Math.round(((x1 - x0) * Math.min(100, Math.max(0, hud.percent))) / 100)
+  for (let x = x0; x < x1; x++) {
+    const at = (x - x0) / (x1 - x0)
+    const ink = x - x0 >= full ? 0x2a2f45 : at < 0.5 ? 0x3ccaff : at < 0.75 ? C.gold : C.red
+    c.rect(x, y, 1, 3 * s, ink)
+  }
+  drawText(c, label, x1 + 3 * s, Math.round(top + (HUD_H * s - GLYPH_H * ls) / 2), { color: hud.percent >= DEATH ? C.red : 0xc8d0e8, scale: ls })
+}
+
 /**
  * Draws the world at `W` by `H` world pixels, `scale` canvas pixels each:
- * 1 for terminal cells, 2 or more for a real-pixel image.
+ * 1 for terminal cells, 2 or more for a real-pixel image. With `hud`, the
+ * bottom HUD_H rows hold the gauge instead of the scene.
  */
-export const paint = (w: World, W: number, H: number, scale = 1): Canvas => {
+export const paint = (w: World, W: number, H: number, scale = 1, hud?: Hud): Canvas => {
+  if (hud === undefined) return paintScene(w, W, H, scale)
+  const scene = paintScene(w, W, H - HUD_H, scale)
+  const c = new Canvas(W * scale, H * scale)
+  c.px.set(scene.px)
+  drawHud(c, hud, (H - HUD_H) * scale, scale)
+  return c
+}
+
+const paintScene = (w: World, W: number, H: number, scale: number): Canvas => {
   const s = scale
   const c = new Canvas(W * s, H * s)
   const L = layout(w, W, H)
